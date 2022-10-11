@@ -1,6 +1,6 @@
 # Tiered Storage Demo
 
-This demo walks through how to get started with Tiered Storage in Confluent Platform 6.0. Docker must be installed and running.
+This demo walks through how to get started with Tiered Storage in Confluent Platform Docker must be installed and running.
 
 For more information:
 
