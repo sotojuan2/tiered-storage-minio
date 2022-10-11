@@ -1,0 +1,92 @@
+version: "3"
+
+services:
+  minio:
+    image: minio/minio
+    hostname: minio
+    container_name: minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      #MINIO_ROOT_USER: minio
+      #MINIO_ROOT_PASSWORD: minio123
+      MINIO_ACCESS_KEY: minio1
+      MINIO_SECRET_KEY: minio123
+    command: server --console-address ":9001" /data
+  createbuckets:
+    image: minio/mc
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      /usr/bin/mc alias set myminio http://minio:9000 minio1 minio123;
+      /usr/bin/mc mb myminio/somebucketname;
+      mc encrypt clear myminio/somebucketname;
+      exit 0;
+      "
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:${CONFLUENT_DOCKER_TAG}
+    hostname: zookeeper
+    container_name: zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_SERVER_ID: 1
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_SERVERS: zookeeper:2888:3888
+      TZ : Europe/Madrid
+  broker:
+    image: confluentinc/cp-server:${CONFLUENT_DOCKER_TAG}
+    hostname: broker
+    container_name: broker
+    ports:
+      - "9091:9091"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_CONFLUENT_TIER_FEATURE: "true"
+      KAFKA_CONFLUENT_TIER_ENABLE: "true"
+      KAFKA_CONFLUENT_TIER_BACKEND: S3
+      KAFKA_CONFLUENT_TIER_S3_BUCKET: ${BUCKET_NAME}
+      KAFKA_CONFLUENT_TIER_S3_REGION: ${REGION}
+      KAFKA_CONFLUENT_TIER_S3_SSE_ALGORITHM: "none"
+      KAFKA_CONFLUENT_TIER_S3.SSE_CUSTOMER_ENCRYPTION_KEY : null
+      KAFKA_CONFLUENT.TIER.S3.AWS.ENDPOINT.OVERRIDE: http://minio:9000/
+      KAFKA_CONFLUENT.TIER.S3.FORCE.PATH.STYLE.ACCESS: "true"
+      AWS_ACCESS_KEY_ID: minio1
+      AWS_SECRET_ACCESS_KEY: minio123
+      KAFKA_CONFLUENT_TIER_LOCAL_HOTSET_MS: 60000 # hotset of 1 minute
+      KAFKA_CONFLUENT_TIER_TOPIC_DELETE_CHECK_INTERVAL: 300000 # check every 5 min for topic deletion
+      KAFKA_CONFLUENT_TIER_METADATA_REPLICATION_FACTOR: 1
+      KAFKA_CONFLUENT_LICENSE_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: LISTENER_DOCKER_INTERNAL:PLAINTEXT,LISTENER_DOCKER_EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: LISTENER_DOCKER_INTERNAL
+      KAFKA_ADVERTISED_LISTENERS: LISTENER_DOCKER_INTERNAL://broker:19091,LISTENER_DOCKER_EXTERNAL://${DOCKER_HOST_IP:-127.0.0.1}:9091
+      KAFKA_METRIC_REPORTERS: io.confluent.metrics.reporter.ConfluentMetricsReporter
+      KAFKA_CONFLUENT_METRICS_REPORTER_BOOTSTRAP_SERVERS: localhost:9091
+      KAFKA_ZOOKEEPER_CONNECT: "zookeeper:2181"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_LOG_SEGMENT_BYTES: 104857600 # 100 MB log segments
+      KAFKA_LOG_RETENTION_MS: 600000 # 10 minute retention
+    depends_on:
+      - zookeeper
+
+  control-center:
+    image: confluentinc/cp-enterprise-control-center:${CONFLUENT_DOCKER_TAG}
+    hostname: control-center
+    container_name: control-center
+    depends_on:
+      - zookeeper
+      - broker
+    ports:
+      - "9021:9021"
+    environment:
+      CONTROL_CENTER_BOOTSTRAP_SERVERS: 'broker:19091'
+      CONTROL_CENTER_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      CONTROL_CENTER_REPLICATION_FACTOR: 1
+      CONTROL_CENTER_INTERNAL_TOPICS_PARTITIONS: 1
+      CONTROL_CENTER_MONITORING_INTERCEPTOR_TOPIC_PARTITIONS: 1
+      CONFLUENT_METRICS_TOPIC_REPLICATION: 1
+      CONTROL_CENTER_CONFLUENT_CONTROL_CENTER_INTERNAL_TOPICS_REPLICATION: 1
+      PORT: 9021
