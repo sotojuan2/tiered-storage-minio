@@ -9,8 +9,6 @@ services:
       - "9000:9000"
       - "9001:9001"
     environment:
-      #MINIO_ROOT_USER: minio
-      #MINIO_ROOT_PASSWORD: minio123
       MINIO_ACCESS_KEY: minio1
       MINIO_SECRET_KEY: minio123
     command: server --console-address ":9001" /data
@@ -46,7 +44,7 @@ services:
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_CONFLUENT_TIER_FEATURE: "true"
-      KAFKA_CONFLUENT_TIER_ENABLE: "true"
+      KAFKA_CONFLUENT_TIER_ENABLE: "false"
       KAFKA_CONFLUENT_TIER_BACKEND: S3
       KAFKA_CONFLUENT_TIER_S3_BUCKET: ${BUCKET_NAME}
       KAFKA_CONFLUENT_TIER_S3_REGION: ${REGION}
@@ -67,7 +65,7 @@ services:
       KAFKA_CONFLUENT_METRICS_REPORTER_BOOTSTRAP_SERVERS: localhost:9091
       KAFKA_ZOOKEEPER_CONNECT: "zookeeper:2181"
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_LOG_SEGMENT_BYTES: 104857600 # 100 MB log segments
+      KAFKA_LOG_SEGMENT_BYTES: 10485760 # 10 MB log segments
       KAFKA_LOG_RETENTION_MS: 600000 # 10 minute retention
     depends_on:
       - zookeeper
