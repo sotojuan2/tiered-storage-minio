@@ -160,6 +160,28 @@ You can monitor various Tiered Storage metrics through the C3 dashboard
 
 <kbd><img src="images/ts-metrics.png" /></kbd>
 
+## Create a Compact Topic
+
+To observe the results of the demo within a reasonable time frame, we create a topic with a short hotset (1 minute), a short retention period (10 minutes), and smaller log segments (10 MB). These configurations were passed to the broker through the [docker-compose.yml](docker-compose.yml) file. Messages that are produced to this topic will be uploaded to the specified S3 bucket.
+
+```
+docker-compose exec broker \
+kafka-topics \
+    --bootstrap-server localhost:9091 \
+    --create \
+    --topic compact-topic \
+    --partitions 1 --config cleanup.policy=compact --config segment.bytes=1048576 --config confluent.tier.cleaner.enable=true \
+    --config confluent.tier.enable=true
+```
+
+## Produce Messages to the Topic
+
+There is a script to produce data with key.
+
+```
+./sampleData.sh
+```
+
 ## shutdown
 
 ```shell
