@@ -77,6 +77,24 @@ Navigating into the directory, we should see more sub-directories that each corr
 
 <kbd><img src="images/all-segment-dirs.png" /></kbd>
 
+Other way to check, if tiered storage is working, is to use minio CLI mc.
+
+First login in the mino pod
+
+```shell
+docker exec -it minio bash
+```
+Login in minio using CLI
+
+```shell
+chmod +x /opt/bin/mc
+mc alias set myminio http://minio:9000 minio1 minio123;
+```
+Find files linked to this topc
+```shell
+mc find myminio/somebucketname --name "*" --metadata "X-Amz-Meta-Topic=test-topic-tiered" | wc -l
+```
+
 ### Non tiered topic
 
 After creating the topic, we should produce enough messages to the topic to ensure that log segments will fill to the 10MB limit and check nothing is uploaded to the tiered storage.
@@ -94,6 +112,12 @@ kafka-producer-perf-test --topic test-topic-no-tiered \
 After a short wait, we should C3 showing data is there, but tiered is disabled.
 
 <kbd><img src="images/c3-no-tiered-topic.png" /></kbd>
+
+Find files linked to this topc
+```shell
+mc find myminio/somebucketname --name "*" --metadata "X-Amz-Meta-Topic=test-topic-no-tiered" | wc -l
+```
+In this example there is nothing in minio.
 
 ### Tiered topic later
 
@@ -114,6 +138,12 @@ We confirm no data is sent to tiered storage.
 
 <kbd><img src="images/c3-tiered-topic-later-not-enabled.png" /></kbd>
 
+Find files linked to this topc
+```shell
+mc find myminio/somebucketname --name "*" --metadata "X-Amz-Meta-Topic=test-topic-tiered-later" | wc -l
+```
+In this example there is nothing in minio.
+
 *Enabling tiered storage*
 
 Execute
@@ -127,6 +157,12 @@ kafka-configs \
 ```
 
 We produce again and we can see data going to the minio
+
+Find files linked to this topc
+```shell
+mc find myminio/somebucketname --name "*" --metadata "X-Amz-Meta-Topic=test-topic-tiered-later" | wc -l
+```
+After enable it on the topic, you will find files on minio.
 
 ```shell
 kafka-producer-perf-test --topic test-topic-tiered-later \
@@ -172,6 +208,11 @@ kafka-topics \
     --topic compact-topic \
     --partitions 1 --config cleanup.policy=compact --config segment.bytes=1048576 --config confluent.tier.cleaner.enable=true \
     --config confluent.tier.enable=true
+```
+
+Find files linked to this topc
+```shell
+mc find myminio/somebucketname --name "*" --metadata "X-Amz-Meta-Topic=compact-topic" | wc -l
 ```
 
 ## Produce Messages to the Topic
