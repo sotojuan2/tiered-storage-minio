@@ -27,5 +27,5 @@ do
   echo "Sending message with random key: $random_key and random value"
   random=$(dd if=/dev/urandom bs=98304 count=1 2>/dev/null | base64)
   echo "$random_key,$random" | \
-  kafka-console-producer --broker-list localhost:9091 --topic $topic --property "parse.key=true" --property "key.separator=,"  >/dev/null
+  kafka-console-producer --broker-list localhost:19091 --topic $topic --property "parse.key=true" --property "key.separator=,"  >/dev/null
 done
