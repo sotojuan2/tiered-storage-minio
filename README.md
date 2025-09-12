@@ -14,11 +14,16 @@ For more information:
 ### Start a Broker with Tiered Storage Enabled
 
 1. Run docker compose
-```shell 
+```shell
 docker-compose up
-# or if you'd like to hide the output and run in the background
+````
+
+or if you'd like to hide the output and run in the background
+
+```shell
 docker-compose up -d
 ```
+
 2. Confluent Control Center will be available at http://localhost:9021 (no password)
 3. Minio console will be available at http://localhost:9001/ (check docker-compose.yml to see the password)
 
@@ -32,21 +37,34 @@ To observe the results of the demo within a reasonable time frame, we create a t
 
 ```shell
  kafka-topics \
-    --bootstrap-server localhost:9091 \
+    --bootstrap-server localhost:19091 \
     --create \
     --topic test-topic-no-tiered \
     --partitions 1
 kafka-topics \
-    --bootstrap-server localhost:9091 \
+    --bootstrap-server localhost:19091 \
     --create \
     --topic test-topic-tiered-later \
     --partitions 1
 kafka-topics \
-    --bootstrap-server localhost:9091 \
+    --bootstrap-server localhost:19091 \
     --create \
     --topic test-topic-tiered \
     --config confluent.tier.enable=true \
     --partitions 1
+kafka-topics \
+    --bootstrap-server localhost:19091 \
+    --create \
+    --topic test-topic-tiered-size-retention \
+    --config confluent.tier.enable=true \
+    --config cleanup.policy=delete \
+    --config retention.ms=-1 \
+    --config retention.bytes=1073741824 \
+    --config confluent.tier.local.hotset.ms=-1 \
+    --config confluent.tier.local.hotset.bytes=357913941 \
+    --config segment.bytes=104857600 \
+    --config file.delete.delay.ms=1000 \
+    --partitions 3
 ```
 
 Additionally, you can create a topic through Confluent Control Center and configure Tiered Storage from there.
@@ -66,7 +84,7 @@ kafka-producer-perf-test --topic test-topic-tiered \
     --throughput -1 \
     --producer-props \
         acks=all \
-        bootstrap.servers=localhost:9091 \
+        bootstrap.servers=localhost:19091 \
         batch.size=8196
 ```
 After a short wait, we should see files beginning to appear in the S3 bucket. You may notice the top directory of "0" appearing first.
@@ -106,7 +124,7 @@ kafka-producer-perf-test --topic test-topic-no-tiered \
     --throughput -1 \
     --producer-props \
         acks=all \
-        bootstrap.servers=localhost:9091 \
+        bootstrap.servers=localhost:19091 \
         batch.size=8196
 ```
 After a short wait, we should C3 showing data is there, but tiered is disabled.
@@ -130,7 +148,7 @@ kafka-producer-perf-test --topic test-topic-tiered-later \
     --throughput -1 \
     --producer-props \
         acks=all \
-        bootstrap.servers=localhost:9091 \
+        bootstrap.servers=localhost:19091 \
         batch.size=8196
 ```
 
@@ -150,7 +168,7 @@ Execute
 
 ```shell
 kafka-configs \
-    --bootstrap-server localhost:9091 \
+    --bootstrap-server localhost:19091 \
     --entity-type topics \
     --entity-name test-topic-tiered-later \
     --alter --add-config confluent.tier.enable=true
@@ -179,11 +197,11 @@ kafka-producer-perf-test --topic test-topic-tiered-later \
 
 Because the topic has a short hotset period, log segments that are uploaded to the S3 bucket will not remain on disk for long. The log segments with the earliest offsets will start to be deleted from disk, since a copy of them resides in object storage. We can still consume these messages that now reside only in the S3 bucket. We can create a consumer that is configured to read messages from the beginning of the topic:
 
-```
-kafka-consumer-perf-test --topic multi-region-async \
+```shell
+kafka-consumer-perf-test --topic test-topic-tiered-later \
     --messages 5000 \
     --threads 1 \
-    --broker-list localhost:9091 \
+    --broker-list localhost:19091 \
     --timeout 20000 \
     --consumer.config config/consumer.config
 ```
@@ -200,10 +218,10 @@ You can monitor various Tiered Storage metrics through the C3 dashboard
 
 To observe the results of the demo within a reasonable time frame, we create a topic with a short hotset (1 minute), a short retention period (10 minutes), and smaller log segments (10 MB). These configurations were passed to the broker through the [docker-compose.yml](docker-compose.yml) file. Messages that are produced to this topic will be uploaded to the specified S3 bucket.
 
-```
+```shell
 docker-compose exec broker \
 kafka-topics \
-    --bootstrap-server localhost:9091 \
+    --bootstrap-server localhost:19091 \
     --create \
     --topic compact-topic \
     --partitions 1 --config cleanup.policy=compact --config segment.bytes=1048576 --config confluent.tier.cleaner.enable=true \
@@ -219,9 +237,38 @@ mc find myminio/somebucketname --name "*" --metadata "X-Amz-Meta-Topic=compact-t
 
 There is a script to produce data with key.
 
-```
+```shell
 ./sampleData.sh
 ```
+
+## Limiting the topic size with retention
+
+Although tiered storage spirit is not to worry about topic sizes and retentions, in on-prem environments object storage may still have some size limitations. With tiered storage, it is possible to use retention based on the size of the topic. This way we can make sure disks wont fill up neither in local storage or in the cabin serving the object storage.
+
+For this demo, we will use the topic named "test-topic-tiered-size-retention", which has been created with the following configuration regarding retention:
+
+- retention.ms=-1                             --> Data will not be deleted from the topic based on its timestamp
+- retention.bytes=1073741824                  --> Maximum size of each partition, counting both local storage and object storage
+- confluent.tier.local.hotset.ms=-1           --> Data will not be deleted from the local (hot) storage based on its timestamp
+- confluent.tier.local.hotset.bytes=357913941 --> Maximum size that each partition can occupy in the local (hot) storage
+- segment.bytes=104857600                     --> Segment size set to 100MB
+- file.delete.delay.ms=1000                   --> The time to wait before deleting a file from the filesystem
+
+The last two are just configured for fine tuning the performance in the demo, the first four are the ones really configuring the retention limits. Each partition will be limited to take 1GB of total space and a third of it in local storage (~340 MB).
+
+Now, start producing information to the topic with the following command:
+
+```shell
+kafka-producer-perf-test --topic test-topic-tiered-size-retention                                                                           --num-records 5000000 \
+    --record-size 5000 \
+    --throughput -1 \
+    --producer-props \
+        acks=all \
+        bootstrap.servers=localhost:9091 \
+        batch.size=8196
+```
+
+You can leave the producer running as long as you want, but the topic will stabilize in a certain size and will never grow over that. However, you will see that the total size of the topic is over the limit of 3GB (it has 3 partitions, each one limited to 1GB). This happens because the active segments in each of the partitions are never deleted, so a small overhead in each of the partitions is normal.
 
 ## shutdown
 
